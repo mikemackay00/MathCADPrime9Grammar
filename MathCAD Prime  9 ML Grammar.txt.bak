@@ -1,0 +1,145 @@
+===================================
+Mathcad Prime 9 – Math Region Grammar
+===================================
+
+Purpose
+Defines the empirically verified AST syntax used by Mathcad Prime 9
+math regions. Intended for code generation (e.g., from LaTeX or
+engineering descriptions), not for parsing user input.
+The grammar serializes a typed AST using a Lisp‑like prefix notation.
+Structure matters more than visual appearance.
+
+Top‑Level Form
+A math region definition:
+(:=  )
+•  MUST be a VARIABLE label
+•  MUST be a valid expression
+
+Left‑Hand Side (Definitions)
+lhs :=
+(@LABEL VARIABLE )
+identifier :=
+
+| (@ID  (@SUB ))
+Notes:
+• Subscripts are semantic identifiers, not text formatting
+• Greek symbols are first‑class identifiers
+• Variables may represent scalars, vectors, or matrices
+Examples:
+(@LABEL VARIABLE x)
+(@LABEL VARIABLE σ)
+(@LABEL VARIABLE (@ID σ (@SUB x)))
+(@LABEL VARIABLE (@ID A (@SUB α)))
+
+Symbols
+symbol :=
+ASCII letter sequence
+| Greek letter token (α β γ … Α Β Γ …)
+Rules:
+• Uppercase and lowercase Greek are distinct
+• Visually similar symbols do NOT alias (v ≠ ν, X ≠ Χ)
+• φ and ϕ are distinct unless normalized by the generator
+
+Expressions (RHS)
+expression :=
+number
+| identifier
+| add | subtract | divide
+| multiply_explicit
+| scale_implied
+| power
+| apply
+| nthroot
+| matrix
+| unit_expression
+
+Arithmetic
+Addition (binary only):
+(+ expr expr)
+a + b + c → (+ (+ a b) c)
+Subtraction:
+(- expr expr)
+Division:
+(/ expr expr)
+
+Multiplication (CRITICAL DISTINCTION)
+Explicit multiplication:
+(* expr expr)
+• REQUIRED for matrix × vector, matrix × matrix
+• Used when user explicitly types · or *
+Implied multiplication / scaling:
+(@SCALE expr expr)
+• Used for adjacency (a b)
+• Used for unit attachment
+• Used for dimensional scaling
+• MUST NOT be used for matrix multiplication
+
+Exponentiation
+power :=
+(^ base exponent)
+exponent :=
+integer | expression
+
+Function Application
+apply :=
+(@APPLY function-symbol (@ARGS expression))
+Rules:
+• Parentheses ALWAYS imply function application
+• Never interpreted as multiplication
+Examples:
+f(x)     → (@APPLY f (@ARGS x))
+ln(x)    → (@APPLY ln (@ARGS x))
+
+Roots
+nthroot :=
+(@NTHROOT @PLACEHOLDER expression)
+Rules:
+• Square roots ALWAYS use @PLACEHOLDER
+• Indexed roots not covered here
+
+Matrices and Vectors
+matrix :=
+(@MATRIX   <element₁> <element₂> …)
+Rules:
+• Vectors are matrices with cols = 1
+• Elements may be identifiers, expressions, or labeled variables
+• Greek identifiers and subscripts are fully supported
+Examples:
+(@MATRIX 2 1
+(@ID σ (@SUB x))
+(@ID σ (@SUB y)))
+Matrix multiplication:
+(* D ε)
+(* A B)
+
+Units
+unit :=
+(@LABEL UNIT )
+Rules:
+• Units are labels, not identifiers
+• Unit attachment uses @SCALE
+• Unit multiplication uses explicit *
+Examples:
+R W/m
+(@SCALE R (/ (@LABEL UNIT W) (@LABEL UNIT m)))
+90 K·m/W
+(@SCALE 90 (/ (* (@LABEL UNIT K) (@LABEL UNIT m))
+(@LABEL UNIT W)))
+
+Canonicalization Rules (Generator Guidance)
+
+Prefer @SCALE over * unless multiplication is explicit or matrix‑based
+Always emit binary (+ a b) nodes
+Preserve parentheses intent:
+symbol(...) → @APPLY
+Do NOT simplify algebraically
+Do NOT coerce Greek ↔ Latin symbols
+Use explicit * for all linear‑algebra operations
+
+
+Out of Scope (Layer Separately)
+• Piecewise expressions
+• Boolean logic
+• Symbolic keywords (solve, simplify, assume, …)
+• Evaluation control constructs
+===================================

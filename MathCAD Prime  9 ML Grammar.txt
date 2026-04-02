@@ -1,0 +1,266 @@
+===================================
+Mathcad Prime 9 – Math Region Grammar
+===================================
+
+Purpose
+Defines the empirically verified AST syntax used by Mathcad Prime 9
+math regions. Intended for code generation (e.g., from LaTeX or
+engineering descriptions), not for parsing user input.
+The grammar serializes a typed AST using a Lisp-like prefix notation.
+Structure matters more than visual appearance.
+
+Top-Level Form
+A math region definition:
+(:= <lhs> <rhs>)
+• MUST be a VARIABLE label (or a matrix of VARIABLE labels for equation sets)
+• MUST be a valid expression
+
+-----------------------------------
+Left-Hand Side (Definitions)
+-----------------------------------
+
+lhs :=
+  (@LABEL VARIABLE <identifier>)
+| (@MATRIX n 1 <lhs_row1> <lhs_row2> ... <lhs_rown>)     // equation set, preferred
+
+identifier :=
+  <symbol>
+| (@ID <symbol> (@SUB <subsymbol>))
+
+				
+Notes
+• Subscripts are semantic identifiers, not text formatting.
+• Subscripted identifiers appear inside @LABEL VARIABLE as (@ID base (@SUB sub)).
+• Greek symbols are first-class identifiers.
+• Variables may represent scalars, vectors, or matrices.
+		 
+				   
+					
+								   
+								   
+
+-----------------------------------
+Subscripts (STRUCTURE + TESTS)
+-----------------------------------
+
+Canonical structure
+X_r  →  (@LABEL VARIABLE (@ID X (@SUB r)))
+
+Grammar
+subsymbol := <symbol>
+
+Rules / specifics
+• Base MUST be a <symbol> (ASCII letter sequence or Greek token).
+• Subscript MUST be a single <symbol> (ASCII or Greek). (Multi-part subscripts are not covered in this file.)
+• The subscripted name is the identifier node: (@ID base (@SUB sub)).
+• The label wrapper is separate: (@LABEL VARIABLE <identifier>). Do not omit @LABEL VARIABLE on LHS definitions.
+
+Recommended test equations to validate subscripts
+1) Simple scalar definition
+(:= (@LABEL VARIABLE (@ID X (@SUB r))) 0)
+
+2) Subscripted variable on RHS
+(:= (@LABEL VARIABLE y) (+ (@ID X (@SUB r)) 1))
+
+3) Greek base with Latin subscript
+(:= (@LABEL VARIABLE (@ID σ (@SUB x))) 5)
+
+4) Latin base with Greek subscript
+(:= (@LABEL VARIABLE (@ID A (@SUB α))) 2)
+
+5) Both sides subscripted
+(:= (@LABEL VARIABLE (@ID V (@SUB 1))) (@ID I (@SUB 1)))
+
+-----------------------------------
+Symbols
+-----------------------------------
+
+symbol :=
+  ASCII letter sequence
+| Greek letter token (α β γ … Α Β Γ …)
+
+Rules
+• Uppercase and lowercase Greek are distinct.
+• Visually similar symbols do NOT alias (v ≠ ν, X ≠ Χ).
+• φ and ϕ are distinct unless normalized by the generator.
+
+-----------------------------------
+Expressions (RHS)
+-----------------------------------
+
+expression :=
+  number
+| identifier
+| add | subtract | divide
+| multiply_explicit
+| scale_implied
+| power
+| apply
+| nthroot
+| matrix
+| unit_expression
+
+Arithmetic
+Addition (binary only):
+(+ expr expr)
+a + b + c → (+ (+ a b) c)
+Subtraction:
+(- expr expr)
+Division:
+(/ expr expr)
+
+Multiplication (CRITICAL DISTINCTION)
+Explicit multiplication:
+(* expr expr)
+• REQUIRED for matrix × vector, matrix × matrix
+• Used when user explicitly types · or *
+Implied multiplication / scaling:
+(@SCALE expr expr)
+• Used for adjacency (a b)
+• Used for unit attachment
+• Used for dimensional scaling
+• MUST NOT be used for matrix multiplication
+
+Exponentiation
+power :=
+(^ base exponent)
+exponent :=
+  integer
+| expression
+
+Function Application
+apply :=
+(@APPLY <function-symbol> (@ARGS <arg_expression>))
+
+arg_expression :=
+  expression
+| (@SEP expression expression)                 // 2 args
+| (@SEP expression (@SEP expression expression)) // 3 args (right-nested)
+
+Rules
+• Parentheses ALWAYS imply function application.
+• Never interpreted as multiplication.
+
+Examples
+f(x)        → (@APPLY (@LABEL VARIABLE f) (@ARGS (@LABEL VARIABLE x)))
+ln(x)       → (@APPLY ln (@ARGS x))
+f(x,y)      → (@APPLY (@LABEL VARIABLE f) (@ARGS (@SEP (@LABEL VARIABLE x) (@LABEL VARIABLE y))))
+
+Roots
+nthroot :=
+(@NTHROOT @PLACEHOLDER expression)
+	  
+										
+								  
+
+Rules
+• Square roots ALWAYS use @PLACEHOLDER.
+• Indexed roots not covered here.
+
+-----------------------------------
+Matrices, Vectors, and Equation Sets
+-----------------------------------
+
+matrix :=
+(@MATRIX <rows:int> <cols:int> <element1> <element2> ... <element(rows*cols)>)
+
+Rules
+• Vectors are matrices with cols = 1.
+• Elements may be identifiers, expressions, or labeled variables.
+• Greek identifiers and subscripts are fully supported.
+
+Matrix multiplication
+(* A B)      // explicit * only
+
+Equation sets (strongly preferred formatting)
+To fit multiple equations into ONE math region, define a column vector of LHS items
+and a matching column vector of RHS expressions using matrix := matrix.
+
+Canonical equation-set pattern
+(:=
+  (@MATRIX n 1 <lhs1> <lhs2> ... <lhsn>)
+  (@MATRIX n 1 <rhs1> <rhs2> ... <rhsn>)
+)
+
+Recommended test equation sets (matrix format)
+
+A) Two function definitions in one region (your preferred style)
+(:=
+  (@MATRIX 2 1
+    (@APPLY (@LABEL VARIABLE f) (@ARGS (@LABEL VARIABLE x)))
+    (@APPLY (@LABEL VARIABLE g) (@ARGS (@SEP (@LABEL VARIABLE x) (@LABEL VARIABLE y)))))
+  (@MATRIX 2 1
+    (^ x 2)
+    (+ x y))
+)
+
+B) Mixed variable + function definition
+(:=
+  (@MATRIX 2 1
+    (@LABEL VARIABLE a)
+    (@APPLY (@LABEL VARIABLE h) (@ARGS (@LABEL VARIABLE t))))
+  (@MATRIX 2 1
+    3
+    (* a t))
+)
+
+C) Subscripted variables in an equation set
+(:=
+  (@MATRIX 3 1
+    (@LABEL VARIABLE (@ID X (@SUB r)))
+    (@LABEL VARIABLE (@ID X (@SUB s)))
+    (@LABEL VARIABLE (@ID X (@SUB t))))
+  (@MATRIX 3 1
+    1
+    2
+    (+ (@ID X (@SUB r)) (@ID X (@SUB s))))
+)
+
+-----------------------------------
+Units
+-----------------------------------
+
+unit :=
+(@LABEL UNIT <symbol>)
+
+Rules
+• Units are labels, not identifiers.
+• Unit attachment uses @SCALE.
+• Unit multiplication uses explicit *.
+
+Examples
+R W/m
+(@SCALE R (/ (@LABEL UNIT W) (@LABEL UNIT m)))
+
+90 K·m/W
+(@SCALE 90 (/ (* (@LABEL UNIT K) (@LABEL UNIT m))
+             (@LABEL UNIT W)))
+
+-----------------------------------
+Canonicalization Rules (Generator Guidance)
+-----------------------------------
+																		
+								
+							
+					  
+							 
+									 
+												  
+
+• Prefer @SCALE over * unless multiplication is explicit or matrix-based.
+• Always emit binary (+ a b) nodes.
+• Preserve parentheses intent: symbol(...) → @APPLY.
+• Do NOT simplify algebraically.
+• Do NOT coerce Greek ↔ Latin symbols.
+• Use explicit * for all linear-algebra operations.
+
+-----------------------------------
+Out of Scope (Layer Separately)
+-----------------------------------
+
+• Piecewise expressions
+• Boolean logic
+• Symbolic keywords (solve, simplify, assume, …)
+• Evaluation control constructs
+
+===================================
