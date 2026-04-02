@@ -1,266 +1,173 @@
-===================================
-Mathcad Prime 9 – Math Region Grammar
-===================================
+Mathcad Prime 9 – Math Region Markup Language (ML)
+Corrected Grammar Notes and Practical Rules
+================================================
 
-Purpose
-Defines the empirically verified AST syntax used by Mathcad Prime 9
-math regions. Intended for code generation (e.g., from LaTeX or
-engineering descriptions), not for parsing user input.
-The grammar serializes a typed AST using a Lisp-like prefix notation.
-Structure matters more than visual appearance.
+PURPOSE
+-------
+This document captures empirically verified Mathcad Prime ML grammar rules,
+with emphasis on matrix content, identifiers, subscripts, Greek symbols,
+and unit expressions. These rules are based on known‑good paste behavior
+in Mathcad Prime and override earlier incorrect assumptions.
 
-Top-Level Form
-A math region definition:
-(:= <lhs> <rhs>)
-• MUST be a VARIABLE label (or a matrix of VARIABLE labels for equation sets)
-• MUST be a valid expression
+These notes MUST be followed when generating ML intended for direct
+paste into Mathcad Prime.
 
------------------------------------
-Left-Hand Side (Definitions)
------------------------------------
 
-lhs :=
-  (@LABEL VARIABLE <identifier>)
-| (@MATRIX n 1 <lhs_row1> <lhs_row2> ... <lhs_rown>)     // equation set, preferred
+CORE PRINCIPLE
+--------------
+Inside Mathcad ML matrices, identifiers are NOT declared variables.
+They must be represented as raw identifiers or symbols, not wrapped
+in @LABEL VARIABLE.
 
-identifier :=
-  <symbol>
-| (@ID <symbol> (@SUB <subsymbol>))
 
-				
-Notes
-• Subscripts are semantic identifiers, not text formatting.
-• Subscripted identifiers appear inside @LABEL VARIABLE as (@ID base (@SUB sub)).
-• Greek symbols are first-class identifiers.
-• Variables may represent scalars, vectors, or matrices.
-		 
-				   
-					
-								   
-								   
+IDENTIFIERS AND VARIABLES
+-------------------------
 
------------------------------------
-Subscripts (STRUCTURE + TESTS)
------------------------------------
+1. Bare identifiers are valid inside matrices:
+   - I
+   - V
+   - ω
+   - Δθ
 
-Canonical structure
-X_r  →  (@LABEL VARIABLE (@ID X (@SUB r)))
+2. Subscripted identifiers MUST use @ID and @SUB:
+   Example:
+     (@ID R (@SUB ac))
+     (@ID W (@SUB c))
+     (@ID θ (@SUB a))
+     (@ID λ (@SUB 1))
 
-Grammar
-subsymbol := <symbol>
+3. DO NOT wrap identifiers inside matrices with:
+     (@LABEL VARIABLE ...)
+   This will cause Mathcad paste failure.
 
-Rules / specifics
-• Base MUST be a <symbol> (ASCII letter sequence or Greek token).
-• Subscript MUST be a single <symbol> (ASCII or Greek). (Multi-part subscripts are not covered in this file.)
-• The subscripted name is the identifier node: (@ID base (@SUB sub)).
-• The label wrapper is separate: (@LABEL VARIABLE <identifier>). Do not omit @LABEL VARIABLE on LHS definitions.
+   INCORRECT:
+     (@LABEL VARIABLE (@ID R (@SUB ac)))
 
-Recommended test equations to validate subscripts
-1) Simple scalar definition
-(:= (@LABEL VARIABLE (@ID X (@SUB r))) 0)
+   CORRECT:
+     (@ID R (@SUB ac))
 
-2) Subscripted variable on RHS
-(:= (@LABEL VARIABLE y) (+ (@ID X (@SUB r)) 1))
 
-3) Greek base with Latin subscript
-(:= (@LABEL VARIABLE (@ID σ (@SUB x))) 5)
+GREEK SYMBOLS
+------------
 
-4) Latin base with Greek subscript
-(:= (@LABEL VARIABLE (@ID A (@SUB α))) 2)
+Greek symbols may appear either:
+- Bare: ω, Δθ
+- As @ID bases with subscripts: (@ID θ (@SUB c))
 
-5) Both sides subscripted
-(:= (@LABEL VARIABLE (@ID V (@SUB 1))) (@ID I (@SUB 1)))
+No VARIABLE label wrapper is required or allowed inside matrices.
 
------------------------------------
-Symbols
------------------------------------
 
-symbol :=
-  ASCII letter sequence
-| Greek letter token (α β γ … Α Β Γ …)
+MATRICES
+--------
 
-Rules
-• Uppercase and lowercase Greek are distinct.
-• Visually similar symbols do NOT alias (v ≠ ν, X ≠ Χ).
-• φ and ϕ are distinct unless normalized by the generator.
+Matrix form:
+  (@MATRIX rows cols element1 element2 element3 ...)
 
------------------------------------
-Expressions (RHS)
------------------------------------
+Rules:
+- Elements are positional, not typed
+- Each row must contain exactly <cols> elements
+- Matrices commonly used for symbol / description / unit tables
 
-expression :=
-  number
-| identifier
-| add | subtract | divide
-| multiply_explicit
-| scale_implied
-| power
-| apply
-| nthroot
-| matrix
-| unit_expression
 
-Arithmetic
-Addition (binary only):
-(+ expr expr)
-a + b + c → (+ (+ a b) c)
-Subtraction:
-(- expr expr)
-Division:
-(/ expr expr)
+UNITS – CRITICAL RULES
+---------------------
 
-Multiplication (CRITICAL DISTINCTION)
-Explicit multiplication:
-(* expr expr)
-• REQUIRED for matrix × vector, matrix × matrix
-• Used when user explicitly types · or *
-Implied multiplication / scaling:
-(@SCALE expr expr)
-• Used for adjacency (a b)
-• Used for unit attachment
-• Used for dimensional scaling
-• MUST NOT be used for matrix multiplication
+1. Only base units may appear as @LABEL UNIT:
+   Examples:
+     (@LABEL UNIT A)
+     (@LABEL UNIT V)
+     (@LABEL UNIT W)
+     (@LABEL UNIT m)
+     (@LABEL UNIT K)
+     (@LABEL UNIT degC)
+     (@LABEL UNIT Ω)
+     (@LABEL UNIT rad)
+     (@LABEL UNIT s)
 
-Exponentiation
-power :=
-(^ base exponent)
-exponent :=
-  integer
-| expression
+2. Compound units MUST be expressed as unit expressions.
+   NEVER use composite unit strings.
 
-Function Application
-apply :=
-(@APPLY <function-symbol> (@ARGS <arg_expression>))
+   INCORRECT:
+     (@LABEL UNIT W/m)
+     (@LABEL UNIT Ω/m)
+     (@LABEL UNIT rad/s)
+     (@LABEL UNIT W/(m·K))
 
-arg_expression :=
-  expression
-| (@SEP expression expression)                 // 2 args
-| (@SEP expression (@SEP expression expression)) // 3 args (right-nested)
+   CORRECT:
+     (/ (@LABEL UNIT W) (@LABEL UNIT m))
+     (/ (@LABEL UNIT Ω) (@LABEL UNIT m))
+     (/ (@LABEL UNIT rad) (@LABEL UNIT s))
+     (/ (@LABEL UNIT W) (* (@LABEL UNIT m) (@LABEL UNIT K)))
 
-Rules
-• Parentheses ALWAYS imply function application.
-• Never interpreted as multiplication.
+3. Thermal resistance per unit length (K·m/W):
+   Express explicitly as:
+     (* (@LABEL UNIT K) (/ (@LABEL UNIT m) (@LABEL UNIT W)))
 
-Examples
-f(x)        → (@APPLY (@LABEL VARIABLE f) (@ARGS (@LABEL VARIABLE x)))
-ln(x)       → (@APPLY ln (@ARGS x))
-f(x,y)      → (@APPLY (@LABEL VARIABLE f) (@ARGS (@SEP (@LABEL VARIABLE x) (@LABEL VARIABLE y))))
 
-Roots
-nthroot :=
-(@NTHROOT @PLACEHOLDER expression)
-	  
-										
-								  
+TEMPERATURE UNITS
+-----------------
 
-Rules
-• Square roots ALWAYS use @PLACEHOLDER.
-• Indexed roots not covered here.
+Use:
+  (@LABEL UNIT degC)
 
------------------------------------
-Matrices, Vectors, and Equation Sets
------------------------------------
+Do NOT use:
+  °C
+  (@LABEL UNIT °C)
 
-matrix :=
-(@MATRIX <rows:int> <cols:int> <element1> <element2> ... <element(rows*cols)>)
 
-Rules
-• Vectors are matrices with cols = 1.
-• Elements may be identifiers, expressions, or labeled variables.
-• Greek identifiers and subscripts are fully supported.
+DIMENSIONLESS QUANTITIES
+------------------------
 
-Matrix multiplication
-(* A B)      // explicit * only
+Dimensionless values MUST be represented as literal 1.
 
-Equation sets (strongly preferred formatting)
-To fit multiple equations into ONE math region, define a column vector of LHS items
-and a matching column vector of RHS expressions using matrix := matrix.
-
-Canonical equation-set pattern
-(:=
-  (@MATRIX n 1 <lhs1> <lhs2> ... <lhsn>)
-  (@MATRIX n 1 <rhs1> <rhs2> ... <rhsn>)
-)
-
-Recommended test equation sets (matrix format)
-
-A) Two function definitions in one region (your preferred style)
-(:=
-  (@MATRIX 2 1
-    (@APPLY (@LABEL VARIABLE f) (@ARGS (@LABEL VARIABLE x)))
-    (@APPLY (@LABEL VARIABLE g) (@ARGS (@SEP (@LABEL VARIABLE x) (@LABEL VARIABLE y)))))
-  (@MATRIX 2 1
-    (^ x 2)
-    (+ x y))
-)
-
-B) Mixed variable + function definition
-(:=
-  (@MATRIX 2 1
-    (@LABEL VARIABLE a)
-    (@APPLY (@LABEL VARIABLE h) (@ARGS (@LABEL VARIABLE t))))
-  (@MATRIX 2 1
-    3
-    (* a t))
-)
-
-C) Subscripted variables in an equation set
-(:=
-  (@MATRIX 3 1
-    (@LABEL VARIABLE (@ID X (@SUB r)))
-    (@LABEL VARIABLE (@ID X (@SUB s)))
-    (@LABEL VARIABLE (@ID X (@SUB t))))
-  (@MATRIX 3 1
+Example:
+  λ₁, λ₂ ratios:
     1
-    2
-    (+ (@ID X (@SUB r)) (@ID X (@SUB s))))
-)
 
------------------------------------
-Units
------------------------------------
+Do NOT attempt to define a "unitless unit".
 
-unit :=
-(@LABEL UNIT <symbol>)
 
-Rules
-• Units are labels, not identifiers.
-• Unit attachment uses @SCALE.
-• Unit multiplication uses explicit *.
+EXAMPLE – VALID MATRIX ROW
+--------------------------
 
-Examples
-R W/m
-(@SCALE R (/ (@LABEL UNIT W) (@LABEL UNIT m)))
+(@ID R (@SUB ac))
+"AC resistance per unit length"
+(/ (@LABEL UNIT Ω) (@LABEL UNIT m))
 
-90 K·m/W
-(@SCALE 90 (/ (* (@LABEL UNIT K) (@LABEL UNIT m))
-             (@LABEL UNIT W)))
 
------------------------------------
-Canonicalization Rules (Generator Guidance)
------------------------------------
-																		
-								
-							
-					  
-							 
-									 
-												  
+COMMON FAILURE MODES (DO NOT DO THESE)
+-------------------------------------
 
-• Prefer @SCALE over * unless multiplication is explicit or matrix-based.
-• Always emit binary (+ a b) nodes.
-• Preserve parentheses intent: symbol(...) → @APPLY.
-• Do NOT simplify algebraically.
-• Do NOT coerce Greek ↔ Latin symbols.
-• Use explicit * for all linear-algebra operations.
+- Wrapping identifiers in @LABEL VARIABLE inside matrices
+- Using composite unit strings (e.g., "W/m")
+- Using °C instead of degC
+- Omitting @ID/@SUB for subscripts
+- Using @PLACEHOLDER tokens
+- Mixing presentation notation with AST grammar
 
------------------------------------
-Out of Scope (Layer Separately)
------------------------------------
 
-• Piecewise expressions
-• Boolean logic
-• Symbolic keywords (solve, simplify, assume, …)
-• Evaluation control constructs
+TOP‑LEVEL DEFINITIONS (OUTSIDE MATRICES)
+----------------------------------------
 
-===================================
+Outside matrices (e.g., in definition regions), variables MAY be declared
+using:
+
+  (:= (@LABEL VARIABLE x) 5)
+
+But this rule does NOT apply inside @MATRIX constructs.
+
+
+SUMMARY (TL;DR)
+---------------
+
+Inside matrices:
+- Identifiers are raw symbols or @ID nodes
+- No VARIABLE labels
+- All compound units are expressions
+- degC only
+- Dimensionless = 1
+
+If Mathcad Prime can paste it, the grammar is correct.
+If it cannot, assume one of the above rules was violated.
+
+END OF FILE
